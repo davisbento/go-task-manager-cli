@@ -2,9 +2,10 @@ package main
 
 import (
 	"bufio"
-	"database/sql"
+	"davisbento/go-task-manager-cli/infra"
+	"davisbento/go-task-manager-cli/repository"
+	"davisbento/go-task-manager-cli/sqlite_repository"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -12,99 +13,12 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func initDB() *sql.DB {
-	db, err := sql.Open("sqlite3", "tasks.db")
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-
-	// Create the tasks table if it doesn't exist
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS tasks (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			description TEXT NOT NULL,
-			completed BOOLEAN NOT NULL DEFAULT 0
-		)
-	`)
-
-	if err != nil {
-		log.Fatalf("Failed to create table: %v", err)
-	}
-
-	log.Println("Database initialized")
-
-	return db
-}
-
-func addTask(db *sql.DB, description string) {
-	_, err := db.Exec("INSERT INTO tasks (description) VALUES (?)", description)
-
-	if err != nil {
-		log.Fatalf("Failed to add task: %v", err)
-	}
-
-	fmt.Println("Task added successfully!")
-}
-
-func listTasks(db *sql.DB, status string) {
-	query := "SELECT id, description, completed FROM tasks"
-
-	if status == "completed" {
-		query += " WHERE completed = 1"
-	}
-
-	if status == "pending" {
-		query += " WHERE completed = 0"
-	}
-
-	rows, err := db.Query(query)
-
-	if err != nil {
-		log.Fatalf("Failed to query tasks: %v", err)
-	}
-
-	defer rows.Close()
-
-	// add a few empty lines
-	fmt.Println()
-
-	fmt.Println("========== Tasks ==========")
-
-	for rows.Next() {
-		var id int
-		var description string
-		var completed bool
-		var status string
-
-		if err := rows.Scan(&id, &description, &completed); err != nil {
-			log.Fatalf("Failed to read row: %v", err)
-		}
-
-		if completed {
-			status = "Completed"
-		} else {
-			status = "Pending"
-		}
-
-		fmt.Printf("[%d] %s - %s\n", id, description, status)
-	}
-
-	fmt.Println("================================")
-	fmt.Println()
-}
-
-func completeTask(db *sql.DB, id int) {
-	_, err := db.Exec("UPDATE tasks SET completed = 1 WHERE id = ?", id)
-	if err != nil {
-		log.Fatalf("Failed to mark task as completed: %v", err)
-	}
-	fmt.Println("Task marked as completed!")
-}
-
 func main() {
-	db := initDB()
+	db := infra.InitDB()
 
 	defer db.Close()
+
+	var repository repository.Repository = sqlite_repository.NewRepository(db)
 
 	for {
 		// Display menu
@@ -132,10 +46,27 @@ func main() {
 
 			description = strings.TrimSpace(description)
 
-			addTask(db, description)
+			err := repository.AddTask(description)
+
+			if err != nil {
+				fmt.Println("Failed to add task:", err)
+				continue
+			}
+
+			fmt.Println("Task added successfully!")
 
 		case "2":
-			listTasks(db, "")
+			fmt.Println("List of Tasks:")
+			tasks := repository.ListTasks("")
+
+			if len(tasks) == 0 {
+				fmt.Println("No tasks found.")
+				continue
+			}
+
+			for _, task := range tasks {
+				fmt.Printf("%d. %s\n", task.ID, task.Description)
+			}
 
 		case "3":
 			fmt.Print("Enter the task ID to mark as completed: ")
@@ -149,7 +80,12 @@ func main() {
 				continue
 			}
 
-			completeTask(db, id)
+			if err := repository.CompleteTask(id); err != nil {
+				fmt.Println("Failed to mark task as completed:", err)
+				continue
+			}
+
+			fmt.Println("Task marked as completed successfully!")
 
 		case "4":
 			fmt.Print("Enter the task ID to delete: ")
@@ -163,9 +99,12 @@ func main() {
 				continue
 			}
 
-			fmt.Printf("Are you sure you want to delete task %d? (yes/no): ", id)
+			if err := repository.DeleteTask(id); err != nil {
+				fmt.Println("Failed to delete task:", err)
+				continue
+			}
 
-			// deleteTask(db, id)
+			fmt.Println("Task deleted successfully!")
 
 		case "q":
 			fmt.Println("Goodbye!")
