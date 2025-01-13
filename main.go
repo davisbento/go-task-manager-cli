@@ -60,13 +60,28 @@ func main() {
 			tasks := repository.ListTasks("")
 
 			if len(tasks) == 0 {
+				fmt.Println("======================")
 				fmt.Println("No tasks found.")
+				fmt.Println("======================")
 				continue
 			}
 
+			// create a tabular format
+			fmt.Println("ID\tDescription\tCompleted")
+			fmt.Println("----\t-----------\t--------")
+
 			for _, task := range tasks {
-				fmt.Printf("%d. %s\n", task.ID, task.Description)
+				completed := "No"
+
+				if task.Completed {
+					completed = "Yes"
+				}
+
+				// create a tabular format position the characters in the table
+				fmt.Printf("%d\t%s\t\t%s\n", task.ID, task.Description, completed)
 			}
+
+			fmt.Println()
 
 		case "3":
 			fmt.Print("Enter the task ID to mark as completed: ")
